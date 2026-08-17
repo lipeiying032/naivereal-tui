@@ -18,8 +18,29 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
+
       - name: Build Windows binary
         run: go build -trimpath -ldflags="-s -w" -o naivereal-tui.exe .
+
+      - name: Bundle with latest kernel
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $release = "${{ github.ref_name }}"
+          $kernelRel = gh release view --repo lipeiying032/naive-reality --json tagName --jq .tagName
+          Write-Host "Using kernel release: $kernelRel"
+          $dir = "naivereal-tui-with-kernel"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item naivereal-tui.exe $dir\
+          gh release download $kernelRel --repo lipeiying032/naive-reality --pattern naivereal-kernel-windows-x64.zip --dir .
+          Expand-Archive naivereal-kernel-windows-x64.zip -DestinationPath kernel-extract -Force
+          $naive = Get-ChildItem kernel-extract -Recurse -Filter naive.exe | Select-Object -First 1
+          if (-not $naive) { throw "naive.exe not found in kernel archive" }
+          Copy-Item $naive.FullName $dir\naive.exe
+          Copy-Item README.md $dir\README.md
+          Compress-Archive -Path $dir -DestinationPath "naivereal-tui-with-kernel-$release.zip" -Force
+
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -30,4 +51,4 @@ jobs:
           } else {
             gh release create $release --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "naivereal-tui $release" --notes "Windows TUI for naivereal"
           }
-          gh release upload $release --repo "${{ github.repository }}" naivereal-tui.exe --clobber
+          gh release upload $release --repo "${{ github.repository }}" naivereal-tui.exe "naivereal-tui-with-kernel-$release.zip" --clobber
