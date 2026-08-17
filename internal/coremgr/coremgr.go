@@ -34,6 +34,9 @@ func BuildCoreConfig(p *config.Profile, internalSocks string) coreConfig {
 	if p.TLS != nil && !*p.TLS {
 		scheme = "http"
 	}
+	if p.QUIC != nil {
+		scheme = "quic"
+	}
 	proxyURL := &url.URL{
 		Scheme: scheme,
 		Host:   net.JoinHostPort(p.Server, strconv.Itoa(p.Port)),

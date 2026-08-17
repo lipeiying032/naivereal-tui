@@ -4,9 +4,17 @@
 //
 //	naive+https://user:pass@host:port?padding=1#name
 //
+// QUIC (standard TLS):
+//
+//	quic://user:pass@host:port?bbr_profile=aggressive#name
+//
 // Extended (this project, with REALITY):
 //
 //	naivereal://user:pass@host:port?server_name=X&public_key=Y&short_id=Z&fingerprint=chrome&padding=1#name
+//
+// QUIC + REALITY:
+//
+//	naivereal+quic://user:pass@host:port?server_name=X&public_key=Y&short_id=Z&bbr_profile=aggressive#name
 package sharelink
 
 import (
@@ -28,8 +36,19 @@ func Parse(link string) (*config.Profile, error) {
 		return nil, fmt.Errorf("parse link: %w", err)
 	}
 	scheme := strings.ToLower(u.Scheme)
-	if scheme != "naivereal" && scheme != "naive+https" {
-		return nil, fmt.Errorf("unsupported scheme %q (want naivereal:// or naive+https://)", u.Scheme)
+	var isQUIC, isReality bool
+	switch scheme {
+	case "quic":
+		isQUIC = true
+	case "naivereal+quic":
+		isQUIC = true
+		isReality = true
+	case "naivereal":
+		isReality = true
+	case "naive+https":
+		// standard TCP
+	default:
+		return nil, fmt.Errorf("unsupported scheme %q (want naive+https://, quic://, naivereal:// or naivereal+quic://)", u.Scheme)
 	}
 	host := u.Hostname()
 	var username, password string
@@ -62,7 +81,9 @@ func Parse(link string) (*config.Profile, error) {
 		p.Name = host
 	}
 	q := u.Query()
-	if scheme == "naivereal" {
+	// A profile is REALITY when the scheme says so, or when the reality query
+	// params are present (allows quic://?server_name=... style links too).
+	if isReality || q.Get("server_name") != "" || q.Get("public_key") != "" || q.Get("short_id") != "" {
 		r := &config.RealityConfig{
 			ServerName:  q.Get("server_name"),
 			PublicKey:   q.Get("public_key"),
@@ -70,7 +91,7 @@ func Parse(link string) (*config.Profile, error) {
 			Fingerprint: q.Get("fingerprint"),
 		}
 		if r.ServerName == "" {
-			return nil, fmt.Errorf("naivereal link missing server_name")
+			return nil, fmt.Errorf("reality link missing server_name")
 		}
 		if err := validatePublicKey(r.PublicKey); err != nil {
 			return nil, err
@@ -82,6 +103,9 @@ func Parse(link string) (*config.Profile, error) {
 			r.Fingerprint = "chrome"
 		}
 		p.Reality = r
+	}
+	if isQUIC {
+		p.QUIC = &config.QUICConfig{}
 	}
 	if bbr := q.Get("bbr_profile"); bbr != "" {
 		if bbr != "standard" && bbr != "aggressive" && bbr != "conservative" {
@@ -146,7 +170,11 @@ func Build(p *config.Profile) (string, error) {
 		if err := validateShortID(p.Reality.ShortID); err != nil {
 			return "", err
 		}
-		u.Scheme = "naivereal"
+		if p.QUIC != nil {
+			u.Scheme = "naivereal+quic"
+		} else {
+			u.Scheme = "naivereal"
+		}
 		q.Set("server_name", p.Reality.ServerName)
 		q.Set("public_key", p.Reality.PublicKey)
 		q.Set("short_id", p.Reality.ShortID)
@@ -156,7 +184,11 @@ func Build(p *config.Profile) (string, error) {
 		u.RawQuery = q.Encode()
 		return u.String(), nil
 	}
-	u.Scheme = "naive+https"
+	if p.QUIC != nil {
+		u.Scheme = "quic"
+	} else {
+		u.Scheme = "naive+https"
+	}
 	if len(q) > 0 {
 		u.RawQuery = q.Encode()
 	}
