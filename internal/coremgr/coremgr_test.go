@@ -48,4 +48,32 @@ func TestBuildCoreConfigIncludesQuicTuning(t *testing.T) {
 	if got.Quic == nil || got.Quic.BBRProfile != "aggressive" || got.Quic.EnableSocketRecvOptimization == nil || *got.Quic.EnableSocketRecvOptimization {
 		t.Fatalf("quic block = %+v", got.Quic)
 	}
+	if got.Proxy[:7] != "quic://" {
+		t.Fatalf("proxy = %q, want quic:// scheme", got.Proxy)
+	}
+}
+
+func TestBuildCoreConfigIncludesQuicReality(t *testing.T) {
+	p := &config.Profile{
+		Server:   "example.com",
+		Port:     8443,
+		Username: "u",
+		Password: "p",
+		QUIC: &config.QUICConfig{
+			BBRProfile: "aggressive",
+		},
+		Reality: &config.RealityConfig{
+			ServerName:  "www.microsoft.com",
+			PublicKey:   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+			ShortID:     "abcd",
+			Fingerprint: "chrome",
+		},
+	}
+	got := BuildCoreConfig(p, "127.0.0.1:41080")
+	if got.Proxy[:7] != "quic://" {
+		t.Fatalf("proxy = %q, want quic:// scheme", got.Proxy)
+	}
+	if got.Reality == nil || got.Reality.ServerName != "www.microsoft.com" || got.Reality.PublicKey != "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" || got.Reality.ShortID != "abcd" {
+		t.Fatalf("reality block = %+v", got.Reality)
+	}
 }

@@ -144,4 +144,65 @@ func TestParseAndBuildQuicTuning(t *testing.T) {
 	if q.Get("socket_recv_optimization") != "false" {
 		t.Fatalf("built socket_recv_optimization = %q", q.Get("socket_recv_optimization"))
 	}
+	if u.Scheme != "quic" {
+		t.Fatalf("built scheme = %q, want quic", u.Scheme)
+	}
+}
+
+func TestParseAndBuildQuicLink(t *testing.T) {
+	p, err := Parse("quic://u:p@example.com:8443?bbr_profile=aggressive#q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.QUIC == nil || p.QUIC.BBRProfile != "aggressive" {
+		t.Fatalf("QUIC not parsed: %+v", p.QUIC)
+	}
+	if p.Reality != nil {
+		t.Fatalf("unexpected reality: %+v", p.Reality)
+	}
+	built, err := Build(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "quic" {
+		t.Fatalf("built scheme = %q, want quic", u.Scheme)
+	}
+	if u.Query().Get("bbr_profile") != "aggressive" {
+		t.Fatalf("built bbr_profile = %q", u.Query().Get("bbr_profile"))
+	}
+}
+
+func TestParseAndBuildQuicRealityLink(t *testing.T) {
+	link := "naivereal+quic://u:p@example.com:8443?server_name=www.microsoft.com&public_key=" + testPub + "&short_id=ab12cd34ef56&bbr_profile=aggressive#q"
+	p, err := Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.QUIC == nil || p.QUIC.BBRProfile != "aggressive" {
+		t.Fatalf("QUIC not parsed: %+v", p.QUIC)
+	}
+	if p.Reality == nil || p.Reality.ServerName != "www.microsoft.com" || p.Reality.PublicKey != testPub || p.Reality.ShortID != "ab12cd34ef56" {
+		t.Fatalf("reality not parsed: %+v", p.Reality)
+	}
+	built, err := Build(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "naivereal+quic" {
+		t.Fatalf("built scheme = %q, want naivereal+quic", u.Scheme)
+	}
+	if u.Query().Get("bbr_profile") != "aggressive" {
+		t.Fatalf("built bbr_profile = %q", u.Query().Get("bbr_profile"))
+	}
+	if u.Query().Get("server_name") != "www.microsoft.com" {
+		t.Fatalf("built server_name = %q", u.Query().Get("server_name"))
+	}
 }
